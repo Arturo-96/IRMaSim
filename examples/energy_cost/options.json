@@ -1,0 +1,8 @@
+{
+  "seed": 1995,
+  "workload_file": "workload.json",
+  "platform_file": "platform.json",
+  "platform_name": "the_platform",
+  "cost_file": "energyCost.csv",
+  "workload_manager": {"type":  "CostAware"}
+}

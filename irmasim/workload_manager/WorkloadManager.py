@@ -14,6 +14,9 @@ class WorkloadManager:
     def on_job_completion(self, jobs: list):
         pass
 
+    def on_job_activation(self, jobs: list):
+        pass
+
     def schedule_next_job(self):
         return False
 

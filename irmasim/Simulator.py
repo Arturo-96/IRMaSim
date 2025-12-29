@@ -1,6 +1,7 @@
 import math
 from irmasim.Job import Job
 from irmasim.JobQueue import JobQueue
+from irmasim.DelayedQueue import DelayedQueue
 from irmasim.workload_manager.WorkloadManager import WorkloadManager
 from irmasim.Options import Options
 import importlib
@@ -18,6 +19,7 @@ class Simulator:
         self.platform = self.build_platform()
         #print(self.platform.pstr("  "))
         self.workload = None
+        self.costs = None
         self.workload_manager = self.build_workload_manager()
         self.simulation_time = 0
         self.energy = 0
@@ -40,6 +42,7 @@ class Simulator:
         nbtrajectories = int(options['nbtrajectories'])
         for i in range(nbtrajectories):
             self.job_queue = self.generate_workload(self.simulation_time)
+            self.delayed_queue = DelayedQueue()
             self.simulate_trajectory()
         self.workload_manager.on_end_simulation()
 
@@ -62,6 +65,7 @@ class Simulator:
         delta_time_platform = self.platform.get_next_step()
         # TODO unify get_next_step return value
         delta_time_queue = self.job_queue.get_next_step() - self.simulation_time
+        delta_time_delay = math.inf
 
         delta_time = min([delta_time_platform, delta_time_queue])
 
@@ -87,13 +91,20 @@ class Simulator:
                 self.reap([task for job in jobs for task in job.tasks])
                 self.workload_manager.on_job_completion(jobs)
 
+            if delta_time == delta_time_delay:
+                jobs =  self.delayed_queue.get_next_jobs(self.simulation_time)
+                logging.getLogger("irmasim").debug("{} delayed job activated: {}".format( \
+                        self.simulation_time, ",".join([str(job.id)+"("+job.name+")" for job in jobs])))
+                self.workload_manager.on_job_activation(jobs)
+
             if delta_time == delta_time_queue or delta_time == delta_time_platform:
                 self.workload_manager.on_end_step()
 
             delta_time_platform = self.platform.get_next_step()
             # TODO unify get_next_step return value
             delta_time_queue = self.job_queue.get_next_step() - self.simulation_time
-            delta_time = min([delta_time_platform, delta_time_queue])
+            delta_time_delay = self.delayed_queue.get_next_step() - self.simulation_time
+            delta_time = min([delta_time_platform, delta_time_queue, delta_time_delay])
             self.log_state()
 
     def schedule(self, tasks: list):
@@ -106,6 +117,9 @@ class Simulator:
                 self.platform.schedule(task, task.resource[1:])
             else:
                 raise Exception(f"Resource {task.resource} does not belong to platform {self.platform.id}")
+    
+    def delay(self, job: Job, time: int):
+        self.delayed_queue.add_job(job, time)
 
     def reap(self, tasks: list):
         for task in tasks:
@@ -116,7 +130,7 @@ class Simulator:
                 self.platform.reap(task, task.resource[1:])
 
     def get_next_step(self) -> float:
-        return min([self.platform.get_next_step(), self.job_queue.get_next_step()])
+        return min([self.platform.get_next_step(), self.job_queue.get_next_step(), self.delayed_queue.get_next_step()])
 
     def get_resources_ids(self):
         return self.platform.enumerate_ids()
@@ -238,6 +252,13 @@ class Simulator:
             trajectory_length = len(self.workload['jobs']) - trajectory_origin
 
         print(f'Using {trajectory_length} jobs starting with #{trajectory_origin}')
+
+        try:
+            self.costs = self.load_csv_costs(options['cost_file'])
+        except:
+            pass
+        else:
+            self.workload_manager.set_costs(self.costs)
         
         job_queue = JobQueue()
         job_id = trajectory_origin
@@ -282,13 +303,32 @@ class Simulator:
                     job['mem_vol'] = 0.0
                 if 'req_energy' not in job:
                     job['req_energy'] = 0.0
+                if 'deadline' not in job:
+                    job['deadline'] = 0.0
                 job_queue.add_job(
                 Job(job_id, job['id'], job['subtime']-first_job_subtime + simulation_time,
                     job['nodes'], job['ntasks'], job['ntasks_per_node'], job['req_ops'], job['ipc'],
-                    job['req_time'], job['req_energy'], job['mem'], job['mem_vol']))
+                    job['req_time'], job['req_energy'], job['mem'], job['mem_vol'], job['deadline']))
             job_id += 1
 
         return job_queue
+    
+    def load_csv_costs(self, filename:str):
+        try:
+            in_f = open(filename, 'r')
+        except:
+            return None
+        else:
+            costs = {}
+            reader = csv.DictReader(in_f)
+            for row in reader:
+                for key in row:
+                    try:
+                        values = row[key].split(';')
+                        costs[int(values[0])] = float(values[1])
+                    except:
+                        pass
+        return costs
 
     def build_workload_manager(self):
         options = Options().get()
@@ -379,6 +419,18 @@ class Simulator:
 
     def energy_efficiency_statistics(self) -> dict:
         return {"total": self.energy * self.simulation_time}
+    
+    def energy_cost_statistics(self) -> dict:
+        if self.costs:
+            totalCost = 0
+            timestep = list(self.costs.keys())[1]
+            for job in self.job_queue.finished_jobs:
+                currentSlice = math.floor(job.start_time/timestep)*timestep
+                totalCost+= job.req_energy * self.costs[currentSlice]
+            return {"total": totalCost}
+        else:
+            return {}
+
 
     def simulation_time_statistics(self) -> dict:
         return {"total": self.simulation_time}

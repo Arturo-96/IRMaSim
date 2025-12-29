@@ -141,6 +141,7 @@ def launch() -> None:
         print_statistics("Energy consumption:", simulator.energy_consumption_statistics())
         print_statistics("User energy estimation:", simulator.energy_user_estimation_statistics())
         print_statistics("Energy efficiency:", simulator.energy_efficiency_statistics())
+        if simulator.energy_cost_statistics():  print_statistics("Energy cost:", simulator.energy_cost_statistics())
         print_statistics("Utilisation:", simulator.utilisation_statistics())
         print_statistics("Exploitation:", simulator.exploitation_statistics())
         print_statistics("Jobs:", simulator.job_statistics())
@@ -148,6 +149,7 @@ def launch() -> None:
         print_statistics("Bounded Slowdown: ",simulator.bounded_slowdown_statistics())
         print_statistics("Waiting Time: ",simulator.waiting_time_statistics())
         print_statistics("Relative Execution Time: ",simulator.relative_execution_time_statistics())
+        
 
     #os.remove(options['output_dir'] + "/simulator.pickle")
     print("Execution time " + str(time.time() - start_time) + " seconds")

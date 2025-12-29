@@ -4,7 +4,7 @@ from irmasim.Task import Task
 
 class Job:
 
-    def __init__(self, id: int, name: str, submit_time: float, nodes: int, ntasks: int, ntasks_per_node: int, req_ops : int, ipc : float, req_time : float, req_energy : int, mem : int, mem_vol : float):
+    def __init__(self, id: int, name: str, submit_time: float, nodes: int, ntasks: int, ntasks_per_node: int, req_ops : int, ipc : float, req_time : float, req_energy : int, mem : int, mem_vol : float, deadline: float):
         self.tasks = None
         self.id = id
         self.rand = 0
@@ -29,6 +29,7 @@ class Job:
         self.req_energy = req_energy
         self.memory = mem
         self.memory_vol = mem_vol
+        self.deadline = deadline
         self.generate_tasks()
 
     @classmethod
@@ -49,8 +50,12 @@ class Job:
             mem = profile['mem']
         else:
             mem = 0
+        if 'deadline' in profile:
+            deadline = profile['deadline']
+        else:
+            deadline = 0
         self=klass(id,name,submit_time, nodes, ntasks, ntasks_per_node, profile['req_ops'], ipc,
-                   profile['req_time'], req_energy, mem, mem_vol)
+                   profile['req_time'], req_energy, mem, mem_vol, deadline)
         self.type = type
         self.profile = profile
         return self
@@ -92,4 +97,4 @@ class Job:
 
     @classmethod
     def header(klass):
-        return "id,req_time,ntasks,mem,submit_time,start_time,finish_time,execution_time,operations,mem_vol,profile,resources"
+        return "id,req_time,ntasks,mem,submit_time,start_time,finish_time,execution_time,operations,mem_vol,profile,resources,deadline"
