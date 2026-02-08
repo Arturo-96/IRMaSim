@@ -1,4 +1,5 @@
 import math
+import statistics
 from irmasim.workload_manager.WorkloadManager import WorkloadManager
 from irmasim.Job import Job
 from irmasim.Task import Task
@@ -45,31 +46,75 @@ class CostAware(WorkloadManager):
 
     def schedule_next_job(self):
         if self.pending_jobs != [] and self.idle_resources >= len(self.pending_jobs[0].tasks):
-            next_job = self.pending_jobs.pop(0)
-            if  next_job.deadline:
-                #move down to local minimun within deadline
-                timestep = list(self.costs.keys())[1]
-                time = next_job.submit_time
-                prev_price = self.costs[math.floor(time/timestep)*timestep]
-                price = self.costs[math.floor(time/timestep)*timestep]
-                while time < next_job.deadline:
-                    time += timestep
-                    price = self.costs[math.floor(time/timestep)*timestep]
-                    if price < prev_price:
-                        prev_price = price
-                    else:
-                        time-=timestep
-                        break
-                self.simulator.delay(next_job,time)
-                self.delayed_jobs.append(next_job)
-            else:
-                for task in next_job.tasks:
+
+            #W - knapsack size = nodes  available
+            W = self.idle_resources
+
+            #val - jobs power consumption
+            val = []
+
+            #wt - number of nodes required by jobs
+            wt = []
+
+            #calculate if peak or off-peak
+            peak = True
+            median = statistics.median(self.costs.values())
+            timestep = list(self.costs.keys())[1]
+            currentSlice = math.floor(self.simulator.simulation_time/timestep)*timestep
+            if self.costs[currentSlice] < median:
+                peak = False
+
+            for job in self.pending_jobs:
+                if peak:
+                    val.append(job.req_energy)
+                else:
+                    val.append(-job.req_energy)
+                wt.append(job.nodes)
+            
+            next_job = self.pending_jobs.pop(self.knapsack(W, val, wt))
+
+            for task in next_job.tasks:
                     self.allocate(task)
-                self.simulator.schedule(next_job.tasks)
-                self.running_jobs.append(next_job)
-            return True
+            self.simulator.schedule(next_job.tasks)
+            self.running_jobs.append(next_job)
+
         else:
             return False
+
+    #returns maximun value that can be put on the knapsack
+    def knapsackRec(self, W, val, wt, n, memo):
+
+        # Base Case
+        if n == 0 or W == 0:
+            return 0
+
+        # Check if we have previously calculated the same subproblem
+        if memo[n][W] != -1:
+            return memo[n][W]
+
+        pick = 0
+
+        #pick item if knapsack capacity is not exceeded
+        if wt[n - 1] <= W:
+            pick = val[n - 1] + self.knapsackRec(W - wt[n - 1], val, wt, n - 1, memo)
+
+        #item not picked
+        notPick = self.knapsackRec(W, val, wt, n - 1, memo)
+
+        # Store the result in memo[n][W] and return it
+        memo[n][W] = max(pick, notPick)
+        return memo[n][W]    
+    
+    #W - knapsack size = nodes  available
+    #val - jobs power consumption
+    #wt - number of nodes required by jobs
+    def knapsack(self, W, val, wt):
+        n = len(val)
+
+        # Memoization table to store the results
+        memo = [[-1] * (W + 1) for _ in range(n + 1)]
+
+        return self.knapsackRec(W, val, wt, n, memo)
 
     def on_end_step(self):
         pass
