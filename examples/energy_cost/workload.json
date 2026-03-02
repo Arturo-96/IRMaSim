@@ -7,10 +7,26 @@
   {"id":  "6", "subtime":  1, "res":  2, "profile": "Low_Intensity"},
   {"id":  "7", "subtime":  2, "res":  1, "profile": "High_Intensity"},
   {"id":  "8", "subtime":  2, "res":  1, "profile": "Med_Intensity"},
-  {"id":  "9", "subtime":  2, "res":  1, "profile": "Low_Intensity"}
+  {"id":  "9", "subtime":  2, "res":  1, "profile": "Low_Intensity"},
+  {"id":  "10", "subtime": 200, "res": 8, "profile": "Long_duration"},
+  {"id":  "11", "subtime": 200, "res": 8, "profile": "Long_duration"},
+  {"id":  "12", "subtime": 800, "res": 8, "profile": "Long_duration"},
+  {"id":  "13", "subtime": 1600, "res": 8, "profile": "Long_duration"},
+  {"id":  "14", "subtime": 1600, "res": 8, "profile": "Long_duration"},
+  {"id":  "15", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "16", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "17", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "18", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "19", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "20", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "21", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "22", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "23", "subtime": 8800, "res": 8, "profile": "Long_duration"},
+  {"id":  "24", "subtime": 8800, "res": 8, "profile": "Long_duration"}
 ],
   "profiles": {
-    "High_Intensity": {"req_time":  10, "req_energy":  1000, "req_ops":  10000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "deadline": 205200},
+    "Long_duration": {"req_time": 1000, "req_energy": 100000, "req_ops": 1000000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 482400},
+    "High_Intensity": {"req_time":  10, "req_energy":  1000, "req_ops":  10000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 205200},
     "Med_Intensity": {"req_time":  5, "req_energy":  500, "req_ops":  5000000000, "ipc": 1, "mem": 1100, "mem_vol": 19},
     "Low_Intensity": {"req_time":  1, "req_energy":  100, "req_ops":  1000000000, "ipc": 1, "mem": 1100, "mem_vol": 19}
   }

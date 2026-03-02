@@ -24,6 +24,7 @@ class Simulator:
         self.simulation_time = 0
         self.energy = 0
         self.energy_user_estimation = 0
+        self.cost = 0
         self.logger = logging.getLogger("simulator")
 
         self.resource_logger = None
@@ -54,6 +55,15 @@ class Simulator:
         self.platform.advance(self.simulation_time)
         # TODO do something with joules
         self.energy = self.platform.get_joules(self.simulation_time)
+        timestep = list(self.costs.keys())[1]
+        firstSlice = 0
+        currentSlice = firstSlice
+        slices = 0
+        while currentSlice <= self.simulation_time:
+            currentSlice += timestep
+            slices += 1
+        for i in range(slices):
+            self.cost += (self.platform.get_joules(self.simulation_time)/slices)*self.costs[currentSlice+i*timestep]
         # self.statistics.calculate_energy_and_edp(self.resource_manager.core_pool, self.simulation_time)
         logging.getLogger("irmasim").debug("{} Received job submission: {}".format( \
                 self.simulation_time, ",".join([str(job.id)+"("+job.name+")" for job in first_jobs])))
@@ -66,13 +76,17 @@ class Simulator:
         # TODO unify get_next_step return value
         delta_time_queue = self.job_queue.get_next_step() - self.simulation_time
         delta_time_delay = math.inf
+        delta_time_slice_change = math.floor(self.simulation_time/timestep)*timestep + timestep
 
-        delta_time = min([delta_time_platform, delta_time_queue])
+        delta_time = min([delta_time_platform, delta_time_queue, delta_time_delay, delta_time_slice_change])
 
         while delta_time != math.inf:
             if delta_time != 0:
                 self.platform.advance(delta_time)
                 self.energy += self.platform.get_joules(delta_time)
+                currentSlice = math.floor(self.simulation_time/timestep)*timestep
+                self.cost += self.platform.get_joules(delta_time)*self.costs[currentSlice]
+                
                 self.simulation_time += delta_time
 
             if delta_time == delta_time_queue:
@@ -96,6 +110,9 @@ class Simulator:
                 logging.getLogger("irmasim").debug("{} delayed job activated: {}".format( \
                         self.simulation_time, ",".join([str(job.id)+"("+job.name+")" for job in jobs])))
                 self.workload_manager.on_job_activation(jobs)
+
+            if delta_time == delta_time_slice_change:
+                pass
 
             if delta_time == delta_time_queue or delta_time == delta_time_platform:
                 self.workload_manager.on_end_step()
@@ -258,7 +275,10 @@ class Simulator:
         except:
             pass
         else:
-            self.workload_manager.set_costs(self.costs)
+            try:
+                self.workload_manager.set_costs(self.costs)
+            except:
+                pass
         
         job_queue = JobQueue()
         job_id = trajectory_origin
@@ -303,12 +323,12 @@ class Simulator:
                     job['mem_vol'] = 0.0
                 if 'req_energy' not in job:
                     job['req_energy'] = 0.0
-                if 'deadline' not in job:
-                    job['deadline'] = 0.0
+                if 'slack' not in job:
+                    job['slack'] = 0.0
                 job_queue.add_job(
                 Job(job_id, job['id'], job['subtime']-first_job_subtime + simulation_time,
                     job['nodes'], job['ntasks'], job['ntasks_per_node'], job['req_ops'], job['ipc'],
-                    job['req_time'], job['req_energy'], job['mem'], job['mem_vol'], job['deadline']))
+                    job['req_time'], job['req_energy'], job['mem'], job['mem_vol'], job['slack']))
             job_id += 1
 
         return job_queue
@@ -418,19 +438,10 @@ class Simulator:
         return {"total": self.energy_user_estimation}
 
     def energy_efficiency_statistics(self) -> dict:
-        return {"total": self.energy * self.simulation_time}
-    
-    def energy_cost_statistics(self) -> dict:
-        if self.costs:
-            totalCost = 0
-            timestep = list(self.costs.keys())[1]
-            for job in self.job_queue.finished_jobs:
-                currentSlice = math.floor(job.start_time/timestep)*timestep
-                totalCost+= job.req_energy * self.costs[currentSlice]
-            return {"total": totalCost}
-        else:
-            return {}
+        return {"total": self.energy * self.simulation_time}    
 
+    def energy_cost_statistics(self) -> dict:
+        return {"total": self.cost}
 
     def simulation_time_statistics(self) -> dict:
         return {"total": self.simulation_time}

@@ -19,6 +19,7 @@ class CostAware(WorkloadManager):
         self.delayed_jobs = []
         self.running_jobs = []
         self.costs = simulator.costs
+        self.schedule = []
 
     def on_job_submission(self, jobs: list):
         self.pending_jobs.extend(jobs)
@@ -45,76 +46,59 @@ class CostAware(WorkloadManager):
             self.running_jobs.append(job)
 
     def schedule_next_job(self):
-        if self.pending_jobs != [] and self.idle_resources >= len(self.pending_jobs[0].tasks):
+        if self.pending_jobs != []:
+            next_job = self.pending_jobs.pop(0)
 
-            #W - knapsack size = nodes  available
-            W = self.idle_resources
+            if  next_job.slack:
+                #move down to global minimun within slack
+                timestep = list(self.costs.keys())[1]
+                slice = next_job.submit_time
+                prev_price = self.costs[math.floor(slice/timestep)*timestep]
+                price = self.costs[math.floor(slice/timestep)*timestep]
+                delay = 0
+                while slice + next_job.req_time < next_job.slack:
+                    price = self.costs[math.floor(slice/timestep)*timestep]
+                    if price < prev_price:
+                        time = slice
+                        #search slot within time slice
+                        while time < slice + timestep:
+                            #check if time window is free
+                            freeResources = len(self.resources)
+                            nextTime= math.inf
+                            for slot in self.schedule:
+                                #overlap in schedule
+                                if slot[0] < time + next_job.req_time and time < slot[1]:
+                                    freeResources -= slot[2]
+                                    #find soonest end of overlaping schedules
+                                    if slot[1] < nextTime:
+                                        nextTime = slot[1]
+                            if freeResources >= len(next_job.tasks):
+                                prev_price=price
+                                delay = time
+                                break
+                            else:
+                                time = nextTime + 1
+                    #advance to next time slice
+                    slice = math.floor(slice/timestep)*timestep + timestep
+                #mark execution time as ocupied
+                self.schedule.append([delay, delay + next_job.req_time, len(next_job.tasks)])
+                
+                self.simulator.delay(next_job,delay)
+                self.delayed_jobs.append(next_job)
 
-            #val - jobs power consumption
-            val = []
-
-            #wt - number of nodes required by jobs
-            wt = []
-
-            #calculate if peak or off-peak
-            peak = True
-            median = statistics.median(self.costs.values())
-            timestep = list(self.costs.keys())[1]
-            currentSlice = math.floor(self.simulator.simulation_time/timestep)*timestep
-            if self.costs[currentSlice] < median:
-                peak = False
-
-            for job in self.pending_jobs:
-                if peak:
-                    val.append(job.req_energy)
-                else:
-                    val.append(-job.req_energy)
-                wt.append(job.nodes)
-            
-            next_job = self.pending_jobs.pop(self.knapsack(W, val, wt))
-
-            for task in next_job.tasks:
+            elif self.idle_resources >= len(next_job.tasks):
+                #TODO: comprobar si tengo recursos para el instante actual?
+                for task in next_job.tasks:
                     self.allocate(task)
-            self.simulator.schedule(next_job.tasks)
-            self.running_jobs.append(next_job)
+                self.simulator.schedule(next_job.tasks)
+                self.running_jobs.append(next_job)
+                return True
+            
+            else:
+                return False
 
         else:
             return False
-
-    #returns maximun value that can be put on the knapsack
-    def knapsackRec(self, W, val, wt, n, memo):
-
-        # Base Case
-        if n == 0 or W == 0:
-            return 0
-
-        # Check if we have previously calculated the same subproblem
-        if memo[n][W] != -1:
-            return memo[n][W]
-
-        pick = 0
-
-        #pick item if knapsack capacity is not exceeded
-        if wt[n - 1] <= W:
-            pick = val[n - 1] + self.knapsackRec(W - wt[n - 1], val, wt, n - 1, memo)
-
-        #item not picked
-        notPick = self.knapsackRec(W, val, wt, n - 1, memo)
-
-        # Store the result in memo[n][W] and return it
-        memo[n][W] = max(pick, notPick)
-        return memo[n][W]    
-    
-    #W - knapsack size = nodes  available
-    #val - jobs power consumption
-    #wt - number of nodes required by jobs
-    def knapsack(self, W, val, wt):
-        n = len(val)
-
-        # Memoization table to store the results
-        memo = [[-1] * (W + 1) for _ in range(n + 1)]
-
-        return self.knapsackRec(W, val, wt, n, memo)
 
     def on_end_step(self):
         pass
