@@ -1,6 +1,8 @@
 from irmasim.workload_manager.WorkloadManager import WorkloadManager
 from irmasim.Job import Job
+from irmasim.Options import Options
 from irmasim.Task import Task
+import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,7 +13,12 @@ class Minimal(WorkloadManager):
         super(Minimal, self).__init__(simulator)
         if simulator.platform.config["model"] != "modelV1":
             raise Exception("Minimal workload manager needs a modelV1 platform")
+        options = Options().get()
+        
+        mod = importlib.import_module("irmasim.platform.models." + options["platform_model_name"] + ".Node")
+        klass = getattr(mod, 'Node')
         self.resources = [ [ resource_id, 1 ] for resource_id in self.simulator.get_resources_ids() ]
+        self.resourcesOpt = self.simulator.get_resources(klass)
         self.idle_resources = len(self.resources)
         self.pending_jobs = []
         self.running_jobs = []
@@ -39,6 +46,53 @@ class Minimal(WorkloadManager):
             return True
         else:
             return False
+        
+    def schedule_jobs(self, time: int, jobs: list, schedule: list):
+        previousJob = jobs[0]
+        newSchedule = []
+        for job in jobs:
+            planned = False
+            while not planned:
+                freeResources = []
+                for resource in self.resourcesOpt:
+                    freeResources.append([resource.id, resource.count_cores()])
+                for plannedJob in schedule:
+                    #overlap in schedule
+                    if plannedJob[0] < time + job.req_time and time < plannedJob[0] + plannedJob[2].req_time:
+                        #remove used resources
+                        for resource in freeResources:
+                            for res in plannedJob[1]:
+                                if resource[0] == res[0]:
+                                    resource[1] -= res[1]
+            
+                #remove full nodes
+                resources = []
+                for resource in freeResources:
+                    if resource[1] > 0:
+                        resources.append(resource)
+            
+                #check if enough free resources
+                tasks = len(job.tasks)
+                if sum(resource[1] for resource in resources) >= tasks:
+                    allocation = []
+                    for res in resources:
+                        if res[1] < tasks:
+                            allocation.append(res)
+                            tasks -= res[1]
+                        else:
+                            allocation.append([res[0],tasks])
+                            break
+
+                    #schedule
+                    schedule.append([time,allocation,job])
+                    newSchedule.append([time,allocation,job])
+                    planned = True
+                    previousJob = job
+                else:
+                    #jump to end of previous job
+                    time = time + previousJob.req_time + 1
+            
+        return newSchedule
 
     def on_end_step(self):
         pass

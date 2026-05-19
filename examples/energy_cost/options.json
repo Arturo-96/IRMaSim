@@ -5,5 +5,5 @@
   "platform_file": "platform.json",
   "platform_name": "the_platform",
   "cost_file": "energyCost.csv",
-  "workload_manager": {"type":  "CostAware"}
+  "workload_manager": {"type": "CostAwareSolver", "secondary": "Minimal"}
 }

@@ -11,7 +11,13 @@ class DelayedQueue:
         self.finished_jobs = []
 
     def add_job(self, job: Job, scheduled_time: int):
-        self.future_jobs.append([job,scheduled_time])
+        add = True
+        for j in self.future_jobs:
+            if j[0].id == job.id:
+                j[1] = scheduled_time
+                add = False
+        if add:
+            self.future_jobs.append([job,scheduled_time])
         self.future_jobs.sort(key=lambda x: x[1])
 
     def get_next_jobs(self, now: float):

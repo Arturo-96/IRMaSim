@@ -38,6 +38,13 @@ class Simulator:
             self.resource_logger = logging.getLogger("resources")
             self.resource_logger.info("time," + klass.header())
 
+        if 'secondary' in options['workload_manager']:
+            module_name = "irmasim.workload_manager." + options["workload_manager"]["secondary"]
+            print(f'Using secondary workload manager {module_name}')
+            mod = importlib.import_module(module_name)
+            klass = getattr(mod, options["workload_manager"]["secondary"])
+            self.workload_manager.set_secondary(klass(self))
+
     def start_simulation(self) -> None:
         options = Options().get()
         nbtrajectories = int(options['nbtrajectories'])
