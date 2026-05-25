@@ -53,39 +53,18 @@ class Minimal(WorkloadManager):
         for job in jobs:
             planned = False
             while not planned:
-                freeResources = []
-                for resource in self.resourcesOpt:
-                    freeResources.append([resource.id, resource.count_cores()])
+                freeResources = sum(resource.count_cores() for resource in self.resourcesOpt)
                 for plannedJob in schedule:
                     #overlap in schedule
-                    if plannedJob[0] < time + job.req_time and time < plannedJob[0] + plannedJob[2].req_time:
+                    if plannedJob[0] < time + job.req_time and time < plannedJob[0] + plannedJob[1].req_time:
                         #remove used resources
-                        for resource in freeResources:
-                            for res in plannedJob[1]:
-                                if resource[0] == res[0]:
-                                    resource[1] -= res[1]
-            
-                #remove full nodes
-                resources = []
-                for resource in freeResources:
-                    if resource[1] > 0:
-                        resources.append(resource)
+                        freeResources -= len(plannedJob[1].tasks)
             
                 #check if enough free resources
-                tasks = len(job.tasks)
-                if sum(resource[1] for resource in resources) >= tasks:
-                    allocation = []
-                    for res in resources:
-                        if res[1] < tasks:
-                            allocation.append(res)
-                            tasks -= res[1]
-                        else:
-                            allocation.append([res[0],tasks])
-                            break
-
+                if freeResources >= len(job.tasks):
                     #schedule
-                    schedule.append([time,allocation,job])
-                    newSchedule.append([time,allocation,job])
+                    schedule.append([time,job])
+                    newSchedule.append([time,job])
                     planned = True
                     previousJob = job
                 else:
