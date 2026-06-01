@@ -7,7 +7,9 @@ from irmasim.platform.BasicNode import BasicNode
 from irmasim.platform.models.modelV1.Node import Node
 from irmasim.Options import Options
 from typing import TYPE_CHECKING
+from itertools import groupby
 import importlib
+import logging
 from ortools.linear_solver import pywraplp
 
 if TYPE_CHECKING:
@@ -19,6 +21,13 @@ class CostAwareSolver(WorkloadManager):
         if simulator.platform.config["model"] != "modelV1":
             raise Exception("CostAware workload manager needs a modelV1 platform")
         options = Options().get()
+
+        self.logger = logging.getLogger(__name__)
+        handler=logging.FileHandler("results.log", mode="w")
+        self.logger.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        self.logger.addHandler(handler)
+        self.logger.propagate = False
 
         mod = importlib.import_module("irmasim.platform.models." + options["platform_model_name"] + ".Node")
         klass = getattr(mod, 'Node')
@@ -117,6 +126,7 @@ class CostAwareSolver(WorkloadManager):
                     self.static_jobs.append(job)
 
                 inmediateJobs = newSchedule
+
             #compact static jobs for solver
             events = []
             for job in self.static_jobs:
@@ -129,15 +139,24 @@ class CostAwareSolver(WorkloadManager):
             activeTasks = 0
             prevTime = None
 
-            for time, tasks in events:
-                #close if no active tasks
-                if prevTime is not None and activeTasks > 0:
+            for time, group in groupby(events, key=lambda e: e[0]):
+                if prevTime is not None and activeTasks >= 0:
                     compactedJobs.append([prevTime, activeTasks, time])
-                activeTasks += tasks
+                for _, tasks in group:
+                    activeTasks += tasks
                 prevTime = time
-
+                
             
             self.solve(compactedJobs)
+
+            self.logger.info("New solution")
+
+            if self.static_jobs:
+                for job in self.static_jobs:
+                    self.logger.info(f"{job[1].id},{job[0]},{job[1].req_time},{len(job[1].tasks)}")
+            
+            for job in self.schedule:
+                self.logger.info(f"{job[1].id},{job[0]},{job[1].req_time},{len(job[1].tasks)}")
 
             print("\n---Inmediatos---")
             for job in inmediateJobs:
@@ -170,6 +189,7 @@ class CostAwareSolver(WorkloadManager):
         T_max = list(self.costs.keys())[-1] + timestep
         M = T_max + sum(job[1].req_time for job in self.schedule) + 1
 
+        #TODO: mas debugeo y sacar logs de resultados legibles y hacer hoja de costes mas legible 
         #TODO: buscar algoritmo greedy euristico
             
         #define solver 
@@ -195,25 +215,25 @@ class CostAwareSolver(WorkloadManager):
             delta[plannedJob[1].id] = {}
             overlap[plannedJob[1].id] = {}
 
-            for key in self.costs.keys():
-                slicesSingle[plannedJob[1].id][key] = solver.BoolVar(f'sliceSingle_{plannedJob[1].id}_{key}') #slices true if initial and final are the same
-                slicesIniOnly[plannedJob[1].id][key] = solver.BoolVar(f'sliceIniOnly_{plannedJob[1].id}_{key}') #slices only the initial one is true
-                slicesInter[plannedJob[1].id][key] = solver.BoolVar(f'intermediate_slice_{plannedJob[1].id}_{key}') #slices the ones between initial and final are true
-                slicesEndOnly[plannedJob[1].id][key] = solver.BoolVar(f'sliceEndOnly_{plannedJob[1].id}_{key}') #slices only the final one is true (can be the same as initial)
-                slicesOff[plannedJob[1].id][key] = solver.BoolVar(f'inactive_slice_{plannedJob[1].id}_{key}') #slices true if job doesn't execute in it
-                delta[plannedJob[1].id][key] = solver.IntVar(0, timestep, f'deltaTime_{key}_{plannedJob[1].id}') #Time the job spends in each slice
+            for timeSlice in self.costs.keys():
+                slicesSingle[plannedJob[1].id][timeSlice] = solver.BoolVar(f'sliceSingle_{plannedJob[1].id}_{timeSlice}') #slices true if initial and final are the same
+                slicesIniOnly[plannedJob[1].id][timeSlice] = solver.BoolVar(f'sliceIniOnly_{plannedJob[1].id}_{timeSlice}') #slices only the initial one is true
+                slicesInter[plannedJob[1].id][timeSlice] = solver.BoolVar(f'intermediate_slice_{plannedJob[1].id}_{timeSlice}') #slices the ones between initial and final are true
+                slicesEndOnly[plannedJob[1].id][timeSlice] = solver.BoolVar(f'sliceEndOnly_{plannedJob[1].id}_{timeSlice}') #slices only the final one is true (can be the same as initial)
+                slicesOff[plannedJob[1].id][timeSlice] = solver.BoolVar(f'inactive_slice_{plannedJob[1].id}_{timeSlice}') #slices true if job doesn't execute in it
+                delta[plannedJob[1].id][timeSlice] = solver.IntVar(0, timestep, f'deltaTime_{timeSlice}_{plannedJob[1].id}') #Time the job spends in each slice
             for job2 in self.schedule:
                 overlap[plannedJob[1].id][job2[1].id] = solver.BoolVar(f'overlap_{plannedJob[1].id}_{job2[1].id}') #True if two jobs overlap in execution
             for job2 in compactedJobs:
-                overlap[plannedJob[1].id][job2[0]] = solver.BoolVar(f'overlap_{plannedJob[1].id}_{job2[0]}') #True if two jobs overlap in execution
+                overlap[plannedJob[1].id][f'static_{job2[0]}'] = solver.BoolVar(f'overlap_{plannedJob[1].id}_{job2[0]}') #True if two jobs overlap in execution
 
 
         #function to minimize
         objective_terms = []
         for plannedJob in self.schedule:
             power = plannedJob[1].req_energy / plannedJob[1].req_time
-            for key in self.costs.keys():
-                objective_terms.append(power * self.costs[key] * delta[plannedJob[1].id][key])
+            for timeSlice in self.costs.keys():
+                objective_terms.append(power * self.costs[timeSlice] * delta[plannedJob[1].id][timeSlice])
         solver.Minimize(solver.Sum(objective_terms))
 
 
@@ -224,67 +244,71 @@ class CostAwareSolver(WorkloadManager):
             solver.Add(solver.Sum(slicesEndOnly[plannedJob[1].id].values()) + solver.Sum(slicesSingle[plannedJob[1].id].values()) == 1) #Only one final slice per job
             solver.Add(solver.Sum(delta[plannedJob[1].id].values()) == plannedJob[1].req_time) #All time per slices adds to required time for execution
 
-            for key in self.costs.keys():
+            for timeSlice in self.costs.keys():
                 #Job can only take one case
                 solver.Add(
-                    slicesOff[plannedJob[1].id][key] +
-                    slicesInter[plannedJob[1].id][key] +
-                    slicesSingle[plannedJob[1].id][key] +
-                    slicesIniOnly[plannedJob[1].id][key] +
-                    slicesEndOnly[plannedJob[1].id][key] == 1
+                    slicesOff[plannedJob[1].id][timeSlice] +
+                    slicesInter[plannedJob[1].id][timeSlice] +
+                    slicesSingle[plannedJob[1].id][timeSlice] +
+                    slicesIniOnly[plannedJob[1].id][timeSlice] +
+                    slicesEndOnly[plannedJob[1].id][timeSlice] == 1
                 )
 
                 # initTime is inside its initial slice
-                solver.Add(initTime[plannedJob[1].id] - key >= -M * (1 - (slicesIniOnly[plannedJob[1].id][key] + slicesSingle[plannedJob[1].id][key])))
-                solver.Add(key + timestep - initTime[plannedJob[1].id] >= -M * (1 - (slicesIniOnly[plannedJob[1].id][key] + slicesSingle[plannedJob[1].id][key])))
+                solver.Add(initTime[plannedJob[1].id] - timeSlice >= -M * (1 - (slicesIniOnly[plannedJob[1].id][timeSlice] + slicesSingle[plannedJob[1].id][timeSlice])))
+                solver.Add(timeSlice + timestep - initTime[plannedJob[1].id] >= -M * (1 - (slicesIniOnly[plannedJob[1].id][timeSlice] + slicesSingle[plannedJob[1].id][timeSlice])))
 
                 # end time is inside final slice
-                solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - key >= -M * (1 - (slicesEndOnly[plannedJob[1].id][key] + slicesSingle[plannedJob[1].id][key])))
-                solver.Add(key + timestep - initTime[plannedJob[1].id] - plannedJob[1].req_time >= -M * (1 - (slicesEndOnly[plannedJob[1].id][key] + slicesSingle[plannedJob[1].id][key])))
+                solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - timeSlice >= -M * (1 - (slicesEndOnly[plannedJob[1].id][timeSlice] + slicesSingle[plannedJob[1].id][timeSlice])))
+                solver.Add(timeSlice + timestep - initTime[plannedJob[1].id] - plannedJob[1].req_time >= -M * (1 - (slicesEndOnly[plannedJob[1].id][timeSlice] + slicesSingle[plannedJob[1].id][timeSlice])))
 
                 #Delta time is in single slice (delta = req_time)
-                solver.Add(delta[plannedJob[1].id][key] - plannedJob[1].req_time >= -M * (1 - slicesSingle[plannedJob[1].id][key]))
-                solver.Add(delta[plannedJob[1].id][key] - plannedJob[1].req_time <= M * (1 - slicesSingle[plannedJob[1].id][key]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - plannedJob[1].req_time >= -M * (1 - slicesSingle[plannedJob[1].id][timeSlice]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - plannedJob[1].req_time <= M * (1 - slicesSingle[plannedJob[1].id][timeSlice]))
 
                 #Delta time in initial slice (delta = end of step - initTime)
-                solver.Add(delta[plannedJob[1].id][key] - (key + timestep - initTime[plannedJob[1].id]) >= -M * (1 - slicesIniOnly[plannedJob[1].id][key]))
-                solver.Add(delta[plannedJob[1].id][key] - (key + timestep - initTime[plannedJob[1].id]) <=  M * (1 - slicesIniOnly[plannedJob[1].id][key]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - (timeSlice + timestep - initTime[plannedJob[1].id]) >= -M * (1 - slicesIniOnly[plannedJob[1].id][timeSlice]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - (timeSlice + timestep - initTime[plannedJob[1].id]) <=  M * (1 - slicesIniOnly[plannedJob[1].id][timeSlice]))
 
                 #Delta time in intermediate slice (delta = timestep)
-                solver.Add(delta[plannedJob[1].id][key] - timestep >= -M * (1 - slicesInter[plannedJob[1].id][key]))
-                solver.Add(delta[plannedJob[1].id][key] - timestep <=  M * (1 - slicesInter[plannedJob[1].id][key]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - timestep >= -M * (1 - slicesInter[plannedJob[1].id][timeSlice]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - timestep <=  M * (1 - slicesInter[plannedJob[1].id][timeSlice]))
 
                 #Delta time in final slice (delta = initTime + reqTime - key)
-                solver.Add(delta[plannedJob[1].id][key] - (initTime[plannedJob[1].id] + plannedJob[1].req_time - key) >= -M * (1 - slicesEndOnly[plannedJob[1].id][key]))
-                solver.Add(delta[plannedJob[1].id][key] - (initTime[plannedJob[1].id] + plannedJob[1].req_time - key) <=  M * (1 - slicesEndOnly[plannedJob[1].id][key]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - (initTime[plannedJob[1].id] + plannedJob[1].req_time - timeSlice) >= -M * (1 - slicesEndOnly[plannedJob[1].id][timeSlice]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] - (initTime[plannedJob[1].id] + plannedJob[1].req_time - timeSlice) <=  M * (1 - slicesEndOnly[plannedJob[1].id][timeSlice]))
 
                 #Delta time in inactive slice (delta = 0)
-                solver.Add(delta[plannedJob[1].id][key] <=  M * (1 - slicesOff[plannedJob[1].id][key]))
-                solver.Add(delta[plannedJob[1].id][key] >= -M * (1 - slicesOff[plannedJob[1].id][key]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] <=  M * (1 - slicesOff[plannedJob[1].id][timeSlice]))
+                solver.Add(delta[plannedJob[1].id][timeSlice] >= -M * (1 - slicesOff[plannedJob[1].id][timeSlice]))
 
             #slices are in correct order
-            solver.Add(solver.Sum(slicesIniOnly[plannedJob[1].id][key]*key for key in self.costs.keys()) <= solver.Sum(slicesEndOnly[plannedJob[1].id][key]*key for key in self.costs.keys())) #init before end
-            solver.Add(solver.Sum(slicesIniOnly[plannedJob[1].id][key]*key for key in self.costs.keys()) <= solver.Sum(slicesInter[plannedJob[1].id][key]*key for key in self.costs.keys())) #init before intermediate
-            solver.Add(solver.Sum(slicesInter[plannedJob[1].id][key]*key for key in self.costs.keys()) <= solver.Sum(slicesEndOnly[plannedJob[1].id][key]*key for key in self.costs.keys())) #inter before end
+            solver.Add(solver.Sum(slicesIniOnly[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys()) <= solver.Sum(slicesEndOnly[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys())) #init before end
+            solver.Add(solver.Sum(slicesIniOnly[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys()) <= solver.Sum(slicesInter[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys())) #init before intermediate
+            solver.Add(solver.Sum(slicesInter[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys()) <= solver.Sum(slicesEndOnly[plannedJob[1].id][timeSlice]*timeSlice for timeSlice in self.costs.keys())) #inter before end
 
             #Overlaps between jobs    
             for job2 in self.schedule:
 
-                a = solver.BoolVar(f'empieza_{plannedJob[1].id}_antes_de_{job2[1].id}')
-                b = solver.BoolVar(f'empieza_{job2[1].id}_antes_de_{plannedJob[1].id}')
+                if plannedJob[1].id == job2[1].id:
+                    solver.Add(overlap[plannedJob[1].id][job2[1].id] == 1)
+                
+                else:
+                    a = solver.BoolVar(f'empieza_{plannedJob[1].id}_antes_de_{job2[1].id}')
+                    b = solver.BoolVar(f'empieza_{job2[1].id}_antes_de_{plannedJob[1].id}')
 
-                #a is  true if initTime1 < initTime2 + req_time2
-                solver.Add(initTime[job2[1].id] + job2[1].req_time - initTime[plannedJob[1].id] >= 1 - M * (1 - a))
-                solver.Add(initTime[job2[1].id] + job2[1].req_time - initTime[plannedJob[1].id] <= M * a)
+                    #a is  true if initTime1 < initTime2 + req_time2
+                    solver.Add(initTime[job2[1].id] + job2[1].req_time - initTime[plannedJob[1].id] >= 1 - M * (1 - a))
+                    solver.Add(initTime[job2[1].id] + job2[1].req_time - initTime[plannedJob[1].id] <= M * a)
 
-                #b is true if initTime2 < initTime1 + req_time1
-                solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - initTime[job2[1].id] >= 1 - M * (1 - b))
-                solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - initTime[job2[1].id] <= M * b)
+                    #b is true if initTime2 < initTime1 + req_time1
+                    solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - initTime[job2[1].id] >= 1 - M * (1 - b))
+                    solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - initTime[job2[1].id] <= M * b)
 
-                #overlap = a and b
-                solver.Add(overlap[plannedJob[1].id][job2[1].id] >= a + b - 1)
-                solver.Add(overlap[plannedJob[1].id][job2[1].id] <= a)
-                solver.Add(overlap[plannedJob[1].id][job2[1].id] <= b)
+                    #overlap = a and b
+                    solver.Add(overlap[plannedJob[1].id][job2[1].id] == a + b - 1)
+                    solver.Add(overlap[plannedJob[1].id][job2[1].id] <= a)
+                    solver.Add(overlap[plannedJob[1].id][job2[1].id] <= b)
 
             #overlaps with static jobs
             for job2 in compactedJobs:
@@ -301,12 +325,11 @@ class CostAwareSolver(WorkloadManager):
                 solver.Add(initTime[plannedJob[1].id] + plannedJob[1].req_time - job2[0] <= M * b)
 
                 #overlap = a and b
-                solver.Add(overlap[plannedJob[1].id][job2[0]] >= a + b - 1)
-                solver.Add(overlap[plannedJob[1].id][job2[0]] <= a)
-                solver.Add(overlap[plannedJob[1].id][job2[0]] <= b)
+                solver.Add(overlap[plannedJob[1].id][f'static_{job2[0]}'] == a + b - 1)
+                solver.Add(overlap[plannedJob[1].id][f'static_{job2[0]}'] <= a)
+                solver.Add(overlap[plannedJob[1].id][f'static_{job2[0]}'] <= b)
 
             #node assigment
-            #solver.Add(solver.Sum(len(job2[1].tasks) * overlap[plannedJob[1].id][job2[1].id] for job2 in self.schedule) <= sum(n.count_cores() for n in self.resources))
             allJobs = self.schedule.copy() + compactedJobs
             solver.Add(solver.Sum( self.get_tasks(job2[1]) * overlap[plannedJob[1].id][self.get_id(job2)] for job2 in allJobs) <= sum(n.count_cores() for n in self.resources))
             
@@ -334,18 +357,14 @@ class CostAwareSolver(WorkloadManager):
             print("ERROR")
 
         """
-        print("--Solver Restrictions--")
-        print("-overlap-")
+        print("--OVERLAPS--")
         for plannedJob in self.schedule:
             for job2 in self.schedule:
-                print(f"job1 {plannedJob[1].id} init {initTime[plannedJob[1].id].solution_value()} end {initTime[plannedJob[1].id].solution_value() + plannedJob[1].req_time}")
-                print(f"job2 {job2[1].id} init {initTime[job2[1].id].solution_value()} end {initTime[job2[1].id].solution_value() + job2[1].req_time}")
-                print(f"overlap {overlap[plannedJob[1].id][job2[1].id].solution_value()}")
-        print("-nodes-")
-        for plannedJob in self.schedule:
-            print(f"job {plannedJob[1].id} Total tasks on overlap: {sum(len(plannedJob[1].tasks) * overlap[plannedJob[1].id][over].solution_value() for over in overlap[plannedJob[1].id].keys())} total cores { sum(n.count_cores() for n in self.resources)}")
+                print(f"job {plannedJob[1].id} starts at {initTime[plannedJob[1].id].solution_value()} ends at {initTime[plannedJob[1].id].solution_value() + plannedJob[1].req_time}")
+                print(f"job {job2[1].id} starts at {initTime[job2[1].id].solution_value()} ends at {initTime[job2[1].id].solution_value() + job2[1].req_time}")
+                print(f"Overlap: {overlap[plannedJob[1].id][job2[1].id].solution_value()}")
+            print(f"For job {plannedJob[1].id} overlaping tasks: {sum(len(job2[1].tasks)*overlap[plannedJob[1].id][job2[1].id].solution_value() for job2 in self.schedule)} total cores: {sum(n.count_cores() for n in self.resources)}")
         """
-
         newSchedule = []
 
         for job in self.schedule:
@@ -362,7 +381,7 @@ class CostAwareSolver(WorkloadManager):
         
     def get_id(self, job):
         if isinstance(job[1], int):
-            return job[0]
+            return f'static_{job[0]}'
         else:
             return job[1].id
 
