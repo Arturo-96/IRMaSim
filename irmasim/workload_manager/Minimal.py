@@ -55,6 +55,9 @@ class Minimal(WorkloadManager):
             while not planned:
                 freeResources = sum(resource.count_cores() for resource in self.resourcesOpt)
                 for plannedJob in schedule:
+                    #ignore unplanned jobs
+                    if plannedJob[0] < 0:
+                        continue
                     #overlap in schedule
                     if plannedJob[0] < time + job.req_time and time < plannedJob[0] + plannedJob[1].req_time:
                         #remove used resources

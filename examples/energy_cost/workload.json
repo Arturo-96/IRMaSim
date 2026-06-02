@@ -11,11 +11,11 @@
 
 ],
   "profiles": {
-    "1Hour_before36000": {"req_time": 36, "req_energy": 100000, "req_ops": 100000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 360},
-    "2Hour_before54000": {"req_time": 72, "req_energy": 200000, "req_ops": 200000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 540},
-    "halfHour_before54000": {"req_time": 18, "req_energy": 50000, "req_ops": 50000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 540},
-    "quarterHour_static_short": {"req_time": 5, "req_energy": 12500, "req_ops": 12500000, "ipc": 1, "mem": 1100, "mem_vol": 19},
-    "2Hour_before7400": {"req_time": 72, "req_energy": 200000, "req_ops": 20000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 740},
-    "quarterHour_before7200": {"req_time": 5, "req_energy": 12500, "req_ops": 12500000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 720}
+    "1Hour_before36000": {"req_time": 360, "req_energy": 100000, "req_ops": 100000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 360},
+    "2Hour_before54000": {"req_time": 720, "req_energy": 200000, "req_ops": 200000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 540},
+    "halfHour_before54000": {"req_time": 180, "req_energy": 50000, "req_ops": 50000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 540},
+    "quarterHour_static_short": {"req_time": 45, "req_energy": 12500, "req_ops": 12500000, "ipc": 1, "mem": 1100, "mem_vol": 19},
+    "2Hour_before7400": {"req_time": 2100, "req_energy": 200000, "req_ops": 20000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 2160},
+    "quarterHour_before7200": {"req_time": 45, "req_energy": 12500, "req_ops": 12500000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 2160}
   }
 }

@@ -128,26 +128,9 @@ class CostAwareSolver(WorkloadManager):
                 inmediateJobs = newSchedule
 
             #compact static jobs for solver
-            events = []
-            for job in self.static_jobs:
-                events.append([job[0], len(job[1].tasks)])
-                events.append([job[0] + job[1].req_time, -len(job[1].tasks)])
+            compactedJobs = self.compact_jobs(self.static_jobs)
             
-            events.sort(key=lambda e:e[0])
-
-            compactedJobs = []
-            activeTasks = 0
-            prevTime = None
-
-            for time, group in groupby(events, key=lambda e: e[0]):
-                if prevTime is not None and activeTasks >= 0:
-                    compactedJobs.append([prevTime, activeTasks, time])
-                for _, tasks in group:
-                    activeTasks += tasks
-                prevTime = time
-                
-            
-            self.solve(compactedJobs)
+            self.solve(compactedJobs, self.simulator.simulation_time)
 
             self.logger.info("New solution")
 
@@ -183,14 +166,11 @@ class CostAwareSolver(WorkloadManager):
         else:
             return False
         
-    def solve(self,  compactedJobs: list):
+    def solve(self,  compactedJobs: list, currentTime: int):
         print("Starting Solver")
         timestep = list(self.costs.keys())[1]
         T_max = list(self.costs.keys())[-1] + timestep
         M = T_max + sum(job[1].req_time for job in self.schedule) + 1
-
-        #TODO: mas debugeo y sacar logs de resultados legibles y hacer hoja de costes mas legible 
-        #TODO: buscar algoritmo greedy euristico
             
         #define solver 
         solver = pywraplp.Solver.CreateSolver('SCIP')
@@ -206,7 +186,7 @@ class CostAwareSolver(WorkloadManager):
         overlap = {}
 
         for plannedJob in self.schedule:
-            initTime[plannedJob[1].id] = solver.IntVar(plannedJob[1].submit_time, plannedJob[1].slack, f'iniTime_{plannedJob[1].id}') #initTime
+            initTime[plannedJob[1].id] = solver.IntVar(currentTime, plannedJob[1].slack, f'iniTime_{plannedJob[1].id}') #initTime
             slicesSingle[plannedJob[1].id] = {}
             slicesIniOnly[plannedJob[1].id] = {}
             slicesInter[plannedJob[1].id] = {}
@@ -350,9 +330,15 @@ class CostAwareSolver(WorkloadManager):
             print("suboptimal solution")
         elif result == pywraplp.Solver.INFEASIBLE:
             print("INFEASIBLE — el problema no tiene solución")
-            # Export model
-            with open('model.lp', 'w') as f:
-                f.write(solver.ExportModelAsLpFormat(False))
+            # Turn a job into static job
+            jobs = [self.schedule.pop(0)[1]]
+            newSchedule = self.secondary.schedule_jobs(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
+            print(newSchedule)
+            self.static_jobs.append(newSchedule.pop())
+            compactedJobs = self.compact_jobs(self.static_jobs)
+            self.solve(compactedJobs,currentTime)
+            return
+            
         else:
             print("ERROR")
 
@@ -384,6 +370,26 @@ class CostAwareSolver(WorkloadManager):
             return f'static_{job[0]}'
         else:
             return job[1].id
+        
+    def compact_jobs(self, jobs: list):
+        events = []
+        for job in jobs:
+            events.append([job[0], len(job[1].tasks)])
+            events.append([job[0] + job[1].req_time, -len(job[1].tasks)])
+            
+        events.sort(key=lambda e:e[0])
+
+        compactedJobs = []
+        activeTasks = 0
+        prevTime = None
+
+        for time, group in groupby(events, key=lambda e: e[0]):
+            if prevTime is not None and activeTasks >= 0:
+                compactedJobs.append([prevTime, activeTasks, time])
+            for _, tasks in group:
+                activeTasks += tasks
+            prevTime = time
+        return compactedJobs
 
     def on_end_step(self):
         pass
