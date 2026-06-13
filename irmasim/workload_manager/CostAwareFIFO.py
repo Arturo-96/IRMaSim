@@ -45,6 +45,9 @@ class CostAwareFIFO(WorkloadManager):
             #for task in job.tasks:
                 #self.deallocate(task)
             self.running_jobs.remove(job)
+            for planned_job in self.schedule:
+                if job.id == planned_job[3].id:
+                    self.schedule.remove(planned_job)
         while self.schedule_next_job():
             pass
 
@@ -63,24 +66,31 @@ class CostAwareFIFO(WorkloadManager):
 
     def schedule_next_job(self):
         if self.pending_jobs != []:
-            next_job = self.pending_jobs.pop(0)
+            #remove jobs with slack from pending
+            slackJobs = []
+            for job in self.pending_jobs:
+                if job.slack and job.slack > 0 and self.simulator.simulation_time + job.req_time <= job.slack:
+                    slackJobs.append(job)
+                
 
-            if  next_job.slack:
+            for next_job in slackJobs:
+                self.pending_jobs.remove(next_job)
                 #move down to global minimun within slack
                 timestep = list(self.costs.keys())[1]
-                slice = next_job.submit_time
+                slice = self.simulator.simulation_time
                 slices = 0
                 currentSlice = math.floor(slice/timestep)*timestep
+                priceSlice = currentSlice
                 while currentSlice < slice + next_job.req_time:
                     slices += 1
                     currentSlice += timestep
                 price = 0
                 for step in range(slices):
-                    price += self.costs[math.floor((slice + step*timestep)/timestep)*timestep]*next_job.req_energy/slices
+                    price += self.costs[math.floor((priceSlice + step*timestep)/timestep)*timestep]*next_job.req_energy/slices
                 prev_price = math.inf
                 delay = 0
                 nodes = []
-                while slice + next_job.req_time < next_job.slack:
+                while slice + next_job.req_time <= next_job.slack:
                     slices = 0
                     currentSlice = math.floor(slice/timestep)*timestep
                     while currentSlice < slice + next_job.req_time:
@@ -131,49 +141,56 @@ class CostAwareFIFO(WorkloadManager):
                                 time = nextTime + 1
                     #advance to next time slice
                     slice = math.floor(slice/timestep)*timestep + timestep
-                #mark execution time as ocupied
-                self.schedule.append([delay, delay + next_job.req_time, nodes, next_job])
-                
-                self.simulator.delay(next_job,delay)
-                self.delayed_jobs.append(next_job)
+                #check if slot found
+                if delay > 0:
+                    #mark execution time as ocupied
+                    self.schedule.append([delay, delay + next_job.req_time, nodes, next_job])
+                    self.simulator.delay(next_job,delay)
+                    self.delayed_jobs.append(next_job)
 
-            else:
-                freeResources = []
-                for resource in self.resources:
-                    freeResources.append([resource, resource.count_cores()])
-
-                for plannedJob in self.schedule:
-                    #overlap in schedule
-                    if plannedJob[0] < self.simulator.simulation_time + next_job.req_time and self.simulator.simulation_time < plannedJob[1]:
-                        looplist = freeResources.copy()
-                        for resource in freeResources:
-                            if resource[0] in plannedJob[2]:
-                                resource[1] -= len(plannedJob[3].tasks)
-                            if resource[1] <= 0:
-                                looplist.remove(resource)
-                            freeResources = looplist
-
-                cores = 0
-                nodes = []
-                #Take necesary nodes
-                for resource in freeResources:
-                    nodes.append(resource[0])
-                    cores += resource[1]
-                    if cores >= len(next_job.tasks):
-                        break
-
-                if nodes:
-                    self.schedule.append([self.simulator.simulation_time, self.simulator.simulation_time + next_job.req_time, nodes, next_job])
-                    self.allocate(next_job, nodes)
-                    self.simulator.schedule(next_job.tasks)
-                    self.running_jobs.append(next_job)
-                    return True
-            
                 else:
-                    return False
+                    #return to pending
+                    self.pending_jobs.append(next_job)
+
+            #Schedule slackless jobs
+            if self.pending_jobs != []:
+                jobs = self.pending_jobs.copy()
+                for next_job in jobs:
+                    freeResources = []
+                    for resource in self.resources:
+                        freeResources.append([resource, resource.count_cores()])
+
+                    for plannedJob in self.schedule:
+                        #overlap in schedule
+                        if plannedJob[0] < self.simulator.simulation_time + next_job.req_time and self.simulator.simulation_time < plannedJob[1]:
+                            looplist = freeResources.copy()
+                            for resource in freeResources:
+                                if resource[0] in plannedJob[2]:
+                                    resource[1] -= len(plannedJob[3].tasks)
+                                if resource[1] <= 0:
+                                    looplist.remove(resource)
+                                freeResources = looplist
+
+                    cores = 0
+                    nodes = []
+                    #Take necesary nodes
+                    for resource in freeResources:
+                        nodes.append(resource[0])
+                        cores += resource[1]
+                        if cores >= len(next_job.tasks):
+                            break
+
+                    if nodes:
+                        self.schedule.append([self.simulator.simulation_time, self.simulator.simulation_time + next_job.req_time, nodes, next_job])
+                        self.allocate(next_job, nodes)
+                        self.simulator.schedule(next_job.tasks)
+                        self.running_jobs.append(next_job)
+                        self.pending_jobs.remove(next_job)
+
 
         else:
             return False
+        
 
     def on_end_step(self):
         pass

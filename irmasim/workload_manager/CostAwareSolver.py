@@ -101,7 +101,6 @@ class CostAwareSolver(WorkloadManager):
                 print(f"Job: {job[1].id} start time: {job[0]}")
                 print(f"    cores used: {len(job[1].tasks)}")
 
-            #TODO: remove nodes from the job struct
             inmediateJobs = []
             for job in self.pending_jobs:
                 if job.slack and job.slack > 0:
@@ -120,8 +119,7 @@ class CostAwareSolver(WorkloadManager):
                 for job in inmediateJobs:
                     print("Job: "+str(job.id)+" slack: "+str(job.slack))
 
-                #TODO: Anhadir abortar si se pasa de slack y testear mas
-                newSchedule = self.secondary.schedule_jobs(inmediateJobs[0].submit_time, inmediateJobs, self.schedule.copy() + self.static_jobs.copy())
+                newSchedule = self.secondary.schedule_jobs_solver(inmediateJobs[0].submit_time, inmediateJobs, self.schedule.copy() + self.static_jobs.copy())
                 for job in newSchedule:
                     self.static_jobs.append(job)
 
@@ -134,11 +132,15 @@ class CostAwareSolver(WorkloadManager):
 
             self.logger.info("New solution")
 
+            print("Para el logger static")
             if self.static_jobs:
                 for job in self.static_jobs:
+                    print(f"metiendo al log job {job[1].id}")
                     self.logger.info(f"{job[1].id},{job[0]},{job[1].req_time},{len(job[1].tasks)}")
             
+            print("Para el logger schedule")
             for job in self.schedule:
+                print(f"metiendo al log job {job[1].id}")
                 self.logger.info(f"{job[1].id},{job[0]},{job[1].req_time},{len(job[1].tasks)}")
 
             print("\n---Inmediatos---")
@@ -147,13 +149,16 @@ class CostAwareSolver(WorkloadManager):
 
             print("---ALLOCATION---")
             #Schedule inmediate jobs
-            for job in inmediateJobs:
-                print(f"job: {job[1].id} tasks: {len(job[1].tasks)}")
-                self.allocate(job[1])
-                self.simulator.schedule(job[1].tasks)
-                self.running_jobs.append(job[1])
+            print(f"static {len(self.static_jobs)}")
+            for job in self.static_jobs:
+                if job[0] >= self.simulator.simulation_time:
+                    print(f"job: {job[1].id} tasks: {len(job[1].tasks)}")
+                    self.simulator.delay(job[1],job[0])
+                    if job[1] not in self.delayed_jobs:
+                        self.delayed_jobs.append(job[1])
 
             #Delay all jobs
+            print(f"delayin {len(self.schedule)} jobs")
             for job in self.schedule:
                 print("JOB: "+str(job[1].id))
                 print(f"cores used: {len(job[1].tasks)}")
@@ -174,7 +179,7 @@ class CostAwareSolver(WorkloadManager):
             
         #define solver 
         solver = pywraplp.Solver.CreateSolver('SCIP')
-        solver.SetTimeLimit(60_000)
+        solver.SetTimeLimit(240_000)
         #problem variables
         slicesSingle = {}
         slicesIniOnly = {}
@@ -273,9 +278,9 @@ class CostAwareSolver(WorkloadManager):
                 if plannedJob[1].id == job2[1].id:
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] == 1)
                 
-                else:
-                    a = solver.BoolVar(f'empieza_{plannedJob[1].id}_antes_de_{job2[1].id}')
-                    b = solver.BoolVar(f'empieza_{job2[1].id}_antes_de_{plannedJob[1].id}')
+                elif plannedJob[1].id < job2[1].id:
+                    a = solver.BoolVar(f'A_empieza_{plannedJob[1].id}_antes_de_{job2[1].id}')
+                    b = solver.BoolVar(f'B_empieza_{job2[1].id}_antes_de_{plannedJob[1].id}')
 
                     #a is  true if initTime1 < initTime2 + req_time2
                     solver.Add(initTime[job2[1].id] + job2[1].req_time - initTime[plannedJob[1].id] >= 1 - M * (1 - a))
@@ -289,6 +294,9 @@ class CostAwareSolver(WorkloadManager):
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] == a + b - 1)
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] <= a)
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] <= b)
+
+                else:
+                    solver.Add(overlap[plannedJob[1].id][job2[1].id] == overlap[job2[1].id][plannedJob[1].id])
 
             #overlaps with static jobs
             for job2 in compactedJobs:
@@ -329,18 +337,34 @@ class CostAwareSolver(WorkloadManager):
         elif result == pywraplp.Solver.FEASIBLE:
             print("suboptimal solution")
         elif result == pywraplp.Solver.INFEASIBLE:
-            print("INFEASIBLE — el problema no tiene solución")
+            print("INFEASIBLE — problem doesn't have solution")
+            print(f"problem had {len(self.schedule)} jobs")
             # Turn a job into static job
             jobs = [self.schedule.pop(0)[1]]
-            newSchedule = self.secondary.schedule_jobs(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
+            newSchedule = self.secondary.schedule_jobs_solver(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
             print(newSchedule)
             self.static_jobs.append(newSchedule.pop())
             compactedJobs = self.compact_jobs(self.static_jobs)
             self.solve(compactedJobs,currentTime)
             return
-            
+        elif result == pywraplp.Solver.NOT_SOLVED:
+            print("NOT_SOLVED — couldn't find solution to problem")
+            print(f"problem had {len(self.schedule)} jobs")
+            # Turn a job into static job
+            jobs = [self.schedule.pop(0)[1]]
+            newSchedule = self.secondary.schedule_jobs_solver(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
+            print(newSchedule)
+            self.static_jobs.append(newSchedule.pop())
+            compactedJobs = self.compact_jobs(self.static_jobs)
+            self.solve(compactedJobs,currentTime)
+            return
         else:
             print("ERROR")
+            print(result)
+            print(f"Exporting model with {len(self.schedule)} jobs")
+            with open("test.lp", "w") as out_f:
+                lp_text = solver.ExportModelAsLpFormat(obfuscate=False)
+                out_f.write(lp_text)
 
         """
         print("--OVERLAPS--")

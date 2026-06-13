@@ -1,0 +1,17 @@
+{"jobs": [
+  {"id":  "1", "subtime":  0, "res":  4, "profile": "2Hour_before7400"},
+  {"id":  "2", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "3", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "4", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "5", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "6", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "7", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "8", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"},
+  {"id":  "9", "subtime":  0, "res":  2, "profile": "quarterHour_before7200"}
+
+],
+  "profiles": {
+    "2Hour_before7400": {"req_time": 2100, "req_energy": 200000, "req_ops": 20000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 2160},
+    "quarterHour_before7200": {"req_time": 45, "req_energy": 12500, "req_ops": 12500000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 2160}
+  }
+}

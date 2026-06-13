@@ -47,7 +47,7 @@ class Minimal(WorkloadManager):
         else:
             return False
         
-    def schedule_jobs(self, time: int, jobs: list, schedule: list):
+    def schedule_jobs_solver(self, time: int, jobs: list, schedule: list):
         previousJob = jobs[0]
         newSchedule = []
         for job in jobs:

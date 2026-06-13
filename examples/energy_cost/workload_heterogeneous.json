@@ -1,0 +1,37 @@
+{"jobs": [
+  {"id":  "1", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "2", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "3", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "4", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "5", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "6", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "7", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "8", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "9", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "10", "subtime":  0, "res":  4, "profile": "1Hour_before36000"},
+  {"id":  "11", "subtime":  0, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "12", "subtime":  0, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "13", "subtime":  0, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "14", "subtime":  0, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "15", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "16", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "17", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "18", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "19", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "20", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "21", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "22", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "23", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "24", "subtime":  28800, "res":  4, "profile": "2Hour_before54000"},
+  {"id":  "25", "subtime":  28800, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "26", "subtime":  28800, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "27", "subtime":  28800, "res":  4, "profile": "halfHour_noSlack"},
+  {"id":  "28", "subtime":  28800, "res":  4, "profile": "halfHour_noSlack"}
+
+],
+  "profiles": {
+    "2Hour_before54000": {"req_time": 7200, "req_energy": 200000, "req_ops": 24000000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 54000},
+    "1Hour_before36000": {"req_time": 3600, "req_energy": 200000, "req_ops": 14000000000000, "ipc": 1, "mem": 1100, "mem_vol": 19, "slack": 36000},
+    "halfHour_noSlack": {"req_time": 1800, "req_energy": 200000, "req_ops": 7000000000000, "ipc": 1, "mem": 1100, "mem_vol": 19}
+  }
+}
