@@ -19,7 +19,7 @@ def parse_file(filepath):
                 current = []
             else:
                 parts = line.split(",")
-                job_id = int(parts[0])
+                job_id = int(parts[0])+1
                 start = float(parts[1])
                 duration = float(parts[2])
                 cores = int(parts[3])

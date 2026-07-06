@@ -63,14 +63,6 @@ class Simulator:
         # TODO do something with joules
         self.energy = self.platform.get_joules(self.simulation_time)
         timestep = list(self.costs.keys())[1]
-        firstSlice = 0
-        currentSlice = firstSlice
-        slices = 0
-        while currentSlice <= self.simulation_time:
-            currentSlice += timestep
-            slices += 1
-        for i in range(slices):
-            self.cost += (self.platform.get_joules(self.simulation_time)/slices)*self.costs[currentSlice+i*timestep]
         # self.statistics.calculate_energy_and_edp(self.resource_manager.core_pool, self.simulation_time)
         logging.getLogger("irmasim").debug("{} Received job submission: {}".format( \
                 self.simulation_time, ",".join([str(job.id)+"("+job.name+")" for job in first_jobs])))
@@ -83,15 +75,15 @@ class Simulator:
         # TODO unify get_next_step return value
         delta_time_queue = self.job_queue.get_next_step() - self.simulation_time
         delta_time_delay = math.inf
-        delta_time_slice_change = math.floor(self.simulation_time/timestep)*timestep + timestep
+        delta_time_slice_change = 0
 
         delta_time = min([delta_time_platform, delta_time_queue, delta_time_delay, delta_time_slice_change])
 
         while delta_time != math.inf:
+            currentSlice = math.floor(self.simulation_time/timestep)*timestep
             if delta_time != 0:
                 self.platform.advance(delta_time)
                 self.energy += self.platform.get_joules(delta_time)
-                currentSlice = math.floor(self.simulation_time/timestep)*timestep
                 self.cost += self.platform.get_joules(delta_time)*self.costs[currentSlice]
                 
                 self.simulation_time += delta_time
@@ -128,7 +120,11 @@ class Simulator:
             # TODO unify get_next_step return value
             delta_time_queue = self.job_queue.get_next_step() - self.simulation_time
             delta_time_delay = self.delayed_queue.get_next_step() - self.simulation_time
-            delta_time = min([delta_time_platform, delta_time_queue, delta_time_delay])
+            if currentSlice + timestep <= list(self.costs.keys())[-1] and (delta_time_queue != math.inf or delta_time_delay != math.inf or delta_time_platform != math.inf):
+                delta_time_slice_change = currentSlice + timestep - self.simulation_time
+            else:
+                delta_time_slice_change = math.inf
+            delta_time = min([delta_time_platform, delta_time_queue, delta_time_delay, delta_time_slice_change])
             self.log_state()
 
     def schedule(self, tasks: list):

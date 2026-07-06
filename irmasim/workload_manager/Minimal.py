@@ -48,7 +48,7 @@ class Minimal(WorkloadManager):
             return False
         
     def schedule_jobs_solver(self, time: int, jobs: list, schedule: list):
-        previousJob = jobs[0]
+        nextTime = time + jobs[0].req_time
         newSchedule = []
         for job in jobs:
             planned = False
@@ -60,6 +60,8 @@ class Minimal(WorkloadManager):
                         continue
                     #overlap in schedule
                     if plannedJob[0] < time + job.req_time and time < plannedJob[0] + plannedJob[1].req_time:
+                        if plannedJob[0] + plannedJob[1].req_time > nextTime:
+                            nextTime = plannedJob[0] + plannedJob[1].req_time
                         #remove used resources
                         freeResources -= len(plannedJob[1].tasks)
             
@@ -69,10 +71,9 @@ class Minimal(WorkloadManager):
                     schedule.append([time,job])
                     newSchedule.append([time,job])
                     planned = True
-                    previousJob = job
                 else:
                     #jump to end of previous job
-                    time = time + previousJob.req_time + 1
+                    time = nextTime
             
         return newSchedule
 

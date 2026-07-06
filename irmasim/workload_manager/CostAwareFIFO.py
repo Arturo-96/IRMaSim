@@ -131,7 +131,6 @@ class CostAwareFIFO(WorkloadManager):
                                 cores += resource[1]
                                 if cores >= len(next_job.tasks):
                                     break
-                            
                             if freeNodes and cores >= len(next_job.tasks):
                                 nodes = freeNodes.copy()
                                 prev_price = price
@@ -146,6 +145,7 @@ class CostAwareFIFO(WorkloadManager):
                     #mark execution time as ocupied
                     self.schedule.append([delay, delay + next_job.req_time, nodes, next_job])
                     self.simulator.delay(next_job,delay)
+                    print(f"job {next_job.id+1} Delayed")
                     self.delayed_jobs.append(next_job)
 
                 else:

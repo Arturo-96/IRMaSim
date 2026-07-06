@@ -45,6 +45,7 @@ class CostAwareSolver(WorkloadManager):
         self.secondary = None
         self.schedule = []
         self.static_jobs = []
+        self.inmediate_jobs = []
 
     def on_job_submission(self, jobs: list):
         self.pending_jobs.extend(jobs)
@@ -79,7 +80,7 @@ class CostAwareSolver(WorkloadManager):
         
         self.allocate(job)
         print("Allocating")
-        print(f"tasks to allocate: {len(job.tasks)} available cores: {sum(len(n.idle_cores()) for n in self.resources)}")
+        print(f"job {job.id} tasks to allocate: {len(job.tasks)} available cores: {sum(len(n.idle_cores()) for n in self.resources)} at {self.simulator.simulation_time}")
         self.simulator.schedule(job.tasks)
         self.running_jobs.append(job)
         
@@ -101,12 +102,12 @@ class CostAwareSolver(WorkloadManager):
                 print(f"Job: {job[1].id} start time: {job[0]}")
                 print(f"    cores used: {len(job[1].tasks)}")
 
-            inmediateJobs = []
+
             for job in self.pending_jobs:
                 if job.slack and job.slack > 0:
                     self.schedule.append([-1, job])
                 else:
-                    inmediateJobs.append(job)
+                    self.inmediate_jobs.append(job)
 
             self.pending_jobs = []
             
@@ -114,21 +115,21 @@ class CostAwareSolver(WorkloadManager):
             for job in self.schedule:
                 print("Job: "+str(job[1].id)+" slack: "+str(job[1].slack))
 
-            if inmediateJobs:
-                print("INMEDIATES")
-                for job in inmediateJobs:
-                    print("Job: "+str(job.id)+" slack: "+str(job.slack))
-
-                newSchedule = self.secondary.schedule_jobs_solver(inmediateJobs[0].submit_time, inmediateJobs, self.schedule.copy() + self.static_jobs.copy())
-                for job in newSchedule:
-                    self.static_jobs.append(job)
-
-                inmediateJobs = newSchedule
-
             #compact static jobs for solver
             compactedJobs = self.compact_jobs(self.static_jobs)
             
             self.solve(compactedJobs, self.simulator.simulation_time)
+
+            if self.inmediate_jobs:
+                print("INMEDIATES")
+                for job in self.inmediate_jobs:
+                    print("Job: "+str(job.id)+" slack: "+str(job.slack))
+
+                newSchedule = self.secondary.schedule_jobs_solver(self.simulator.simulation_time, self.inmediate_jobs, self.schedule.copy() + self.static_jobs.copy())
+                for job in newSchedule:
+                    self.static_jobs.append(job)
+
+                self.inmediate_jobs = []
 
             self.logger.info("New solution")
 
@@ -143,8 +144,8 @@ class CostAwareSolver(WorkloadManager):
                 print(f"metiendo al log job {job[1].id}")
                 self.logger.info(f"{job[1].id},{job[0]},{job[1].req_time},{len(job[1].tasks)}")
 
-            print("\n---Inmediatos---")
-            for job in inmediateJobs:
+            print("\n---Estaticos---")
+            for job in self.static_jobs:
                 print(f"  Job {job[1].id}: req_time={job[1].req_time}, initTime={job[0]}")
 
             print("---ALLOCATION---")
@@ -158,7 +159,7 @@ class CostAwareSolver(WorkloadManager):
                         self.delayed_jobs.append(job[1])
 
             #Delay all jobs
-            print(f"delayin {len(self.schedule)} jobs")
+            print(f"delaying {len(self.schedule)} jobs")
             for job in self.schedule:
                 print("JOB: "+str(job[1].id))
                 print(f"cores used: {len(job[1].tasks)}")
@@ -178,7 +179,7 @@ class CostAwareSolver(WorkloadManager):
         M = T_max + sum(job[1].req_time for job in self.schedule) + 1
             
         #define solver 
-        solver = pywraplp.Solver.CreateSolver('SCIP')
+        solver = pywraplp.Solver.CreateSolver('CP-SAT')
         solver.SetTimeLimit(240_000)
         #problem variables
         slicesSingle = {}
@@ -278,7 +279,8 @@ class CostAwareSolver(WorkloadManager):
                 if plannedJob[1].id == job2[1].id:
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] == 1)
                 
-                elif plannedJob[1].id < job2[1].id:
+                #elif plannedJob[1].id < job2[1].id:
+                else:
                     a = solver.BoolVar(f'A_empieza_{plannedJob[1].id}_antes_de_{job2[1].id}')
                     b = solver.BoolVar(f'B_empieza_{job2[1].id}_antes_de_{plannedJob[1].id}')
 
@@ -295,8 +297,8 @@ class CostAwareSolver(WorkloadManager):
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] <= a)
                     solver.Add(overlap[plannedJob[1].id][job2[1].id] <= b)
 
-                else:
-                    solver.Add(overlap[plannedJob[1].id][job2[1].id] == overlap[job2[1].id][plannedJob[1].id])
+                #else:
+                    #solver.Add(overlap[plannedJob[1].id][job2[1].id] == overlap[job2[1].id][plannedJob[1].id])
 
             #overlaps with static jobs
             for job2 in compactedJobs:
@@ -339,23 +341,16 @@ class CostAwareSolver(WorkloadManager):
         elif result == pywraplp.Solver.INFEASIBLE:
             print("INFEASIBLE — problem doesn't have solution")
             print(f"problem had {len(self.schedule)} jobs")
-            # Turn a job into static job
-            jobs = [self.schedule.pop(0)[1]]
-            newSchedule = self.secondary.schedule_jobs_solver(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
-            print(newSchedule)
-            self.static_jobs.append(newSchedule.pop())
-            compactedJobs = self.compact_jobs(self.static_jobs)
+            # Turn a job into inmediate
+            self.inmediate_jobs.append(self.schedule.pop(0)[1])
             self.solve(compactedJobs,currentTime)
             return
         elif result == pywraplp.Solver.NOT_SOLVED:
             print("NOT_SOLVED — couldn't find solution to problem")
             print(f"problem had {len(self.schedule)} jobs")
-            # Turn a job into static job
-            jobs = [self.schedule.pop(0)[1]]
-            newSchedule = self.secondary.schedule_jobs_solver(currentTime, jobs, self.schedule.copy() + self.static_jobs.copy())
-            print(newSchedule)
-            self.static_jobs.append(newSchedule.pop())
-            compactedJobs = self.compact_jobs(self.static_jobs)
+            # Turn a job into inmediate
+            # Turn a job into inmediate
+            self.inmediate_jobs.append(self.schedule.pop(0)[1])
             self.solve(compactedJobs,currentTime)
             return
         else:
