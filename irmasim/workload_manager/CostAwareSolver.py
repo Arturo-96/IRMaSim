@@ -110,6 +110,17 @@ class CostAwareSolver(WorkloadManager):
                     self.inmediate_jobs.append(job)
 
             self.pending_jobs = []
+
+            if self.inmediate_jobs:
+                print("INMEDIATES")
+                for job in self.inmediate_jobs:
+                    print("Job: "+str(job.id)+" slack: "+str(job.slack))
+            
+                newSchedule = self.secondary.schedule_jobs_solver(self.simulator.simulation_time, self.inmediate_jobs, self.schedule.copy() + self.static_jobs.copy())
+                for job in newSchedule:
+                    self.static_jobs.append(job)
+            
+                self.inmediate_jobs = []
             
             print("JOBS:")
             for job in self.schedule:
@@ -120,18 +131,18 @@ class CostAwareSolver(WorkloadManager):
             
             self.solve(compactedJobs, self.simulator.simulation_time)
 
+            self.logger.info("New solution")
+
             if self.inmediate_jobs:
-                print("INMEDIATES")
+                print("INMEDIATES after SOLVER")
                 for job in self.inmediate_jobs:
                     print("Job: "+str(job.id)+" slack: "+str(job.slack))
-
+                        
                 newSchedule = self.secondary.schedule_jobs_solver(self.simulator.simulation_time, self.inmediate_jobs, self.schedule.copy() + self.static_jobs.copy())
                 for job in newSchedule:
                     self.static_jobs.append(job)
-
+                        
                 self.inmediate_jobs = []
-
-            self.logger.info("New solution")
 
             print("Para el logger static")
             if self.static_jobs:
@@ -149,6 +160,7 @@ class CostAwareSolver(WorkloadManager):
                 print(f"  Job {job[1].id}: req_time={job[1].req_time}, initTime={job[0]}")
 
             print("---ALLOCATION---")
+
             #Schedule inmediate jobs
             print(f"static {len(self.static_jobs)}")
             for job in self.static_jobs:
@@ -276,8 +288,8 @@ class CostAwareSolver(WorkloadManager):
         #Define intervals and demands for static jobs
         static_intervals = []
         for job in compactedJobs:
-            demands.append(len(self.get_tasks(job[1])))
-            static_intervals.append(model.NewFixedSizeIntervalVar(job[0], job[2] - job[0], f"interval_{plannedJob[1].id}"))
+            demands.append(job[1])
+            static_intervals.append(model.NewFixedSizeIntervalVar(int(job[0]), int(job[2] - job[0]), f"interval_{plannedJob[1].id}"))
 
         
         model.AddCumulative(list(interval.values()) + static_intervals, demands, capacity)
@@ -285,7 +297,7 @@ class CostAwareSolver(WorkloadManager):
         #Define solver from model
         solver = cp_model.CpSolver()
 
-        solver.parameters.max_time_in_seconds = 15.0   
+        solver.parameters.max_time_in_seconds = 15.0 
         solver.parameters.num_search_workers = 0        #use al cores    
         solver.parameters.log_search_progress = True
             

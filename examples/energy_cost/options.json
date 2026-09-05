@@ -1,7 +1,7 @@
 {
   "seed": 1995,
   "log_level": "DEBUG",
-  "workload_file": "workload_manySmall.json",
+  "workload_file": "workload_heterogeneous.json",
   "platform_file": "platform_homogeneous.json",
   "platform_name": "the_platform",
   "cost_file": "energyCost.csv",
