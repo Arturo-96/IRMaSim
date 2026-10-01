@@ -1,3 +1,5 @@
+FORK: Implemented two new policies CostAwareFIFO and CostAwareSolver in /irmasim/workload_manager plus some modifications to simulation.
+
 IRMaSim
 =======
 
